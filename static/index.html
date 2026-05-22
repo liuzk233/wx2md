@@ -377,7 +377,7 @@ async function loadDir(path) {
     const resp = await fetch('/api/browse?path=' + encodeURIComponent(path));
     const data = await resp.json();
     if (data.error) {
-      list.innerHTML = '<div style="padding:16px;color:#c62828;">' + data.error + '</div>';
+      list.innerHTML = '<div style="padding:16px;color:#c62828;">' + escapeHtml(data.error) + '</div>';
       return;
     }
     browserPath = data.current;
@@ -386,15 +386,15 @@ async function loadDir(path) {
     // 盘符选择
     if (data.drives) {
       for (const d of data.drives) {
-        html += '<div class="dir-item" onclick="loadDir(\'' + d + '\\\')"><span class="icon">💾</span> ' + d + '</div>';
+        html += '<div class="dir-item" onclick="loadDir(\'' + escapeForOnclickAttr(d + '\\') + '\')"><span class="icon">💾</span> ' + escapeHtml(d) + '</div>';
       }
     }
     if (data.parent !== null) {
-      html += '<div class="dir-item" onclick="loadDir(\'' + escapePath(data.parent) + '\')"><span class="icon">↑</span> ..</div>';
+      html += '<div class="dir-item" onclick="loadDir(\'' + escapeForOnclickAttr(data.parent) + '\')"><span class="icon">↑</span> ..</div>';
     }
     for (const d of data.dirs) {
       const child = data.current ? data.current + '/' + d : d;
-      html += '<div class="dir-item" onclick="loadDir(\'' + escapePath(child) + '\')"><span class="icon">📁</span> ' + d + '</div>';
+      html += '<div class="dir-item" onclick="loadDir(\'' + escapeForOnclickAttr(child) + '\')"><span class="icon">📁</span> ' + escapeHtml(d) + '</div>';
     }
     if (!data.dirs.length && data.parent === null && !data.drives) {
       html += '<div style="padding:16px;color:#999;">无子目录</div>';
@@ -405,8 +405,16 @@ async function loadDir(path) {
   }
 }
 
-function escapePath(p) {
+function escapeForOnclickAttr(p) {
   return p.replace(/\\/g, '/').replace(/'/g, "\\'");
+}
+
+function escapeHtml(value) {
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
 }
 
 function renderBreadcrumb(path) {
@@ -418,12 +426,12 @@ function renderBreadcrumb(path) {
   const parts = path.split('/');
   const isAbsolute = /^[A-Z]:$/i.test(parts[0]);
   let html = isAbsolute
-    ? '<span onclick="loadDir(\'' + parts[0] + '\\\')">' + parts[0] + '</span>'
+    ? '<span onclick="loadDir(\'' + escapeForOnclickAttr(parts[0] + '\\') + '\')">' + escapeHtml(parts[0]) + '</span>'
     : '<span onclick="loadDir(\'\')">根目录</span>';
   let accumulated = parts[0];
   for (let i = 1; i < parts.length; i++) {
     accumulated += '/' + parts[i];
-    html += ' / <span onclick="loadDir(\'' + escapePath(accumulated) + '\')">' + parts[i] + '</span>';
+    html += ' / <span onclick="loadDir(\'' + escapeForOnclickAttr(accumulated) + '\')">' + escapeHtml(parts[i]) + '</span>';
   }
   bc.innerHTML = html;
 }
