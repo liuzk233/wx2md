@@ -1,7 +1,7 @@
 output/
-.claude/
 __pycache__/
 *.pyc
-openspec/config.yaml
+.git/
+.claude/
 venv/
 .env

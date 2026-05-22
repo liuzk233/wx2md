@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>wx2md - 微信文章转 Markdown</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  background: #f5f5f5;
+  color: #333;
+  min-height: 100vh;
+  display: flex;
+  justify-content: center;
+  padding: 40px 16px;
+}
+.container {
+  width: 100%;
+  max-width: 560px;
+}
+h1 {
+  font-size: 20px;
+  font-weight: 600;
+  margin-bottom: 24px;
+  color: #1a1a1a;
+}
+label {
+  display: block;
+  font-size: 14px;
+  font-weight: 500;
+  margin-bottom: 6px;
+  color: #555;
+}
+input[type="text"] {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  font-size: 14px;
+  outline: none;
+  transition: border-color 0.2s;
+}
+input[type="text"]:focus {
+  border-color: #4a90d9;
+}
+button {
+  width: 100%;
+  padding: 10px;
+  margin-top: 12px;
+  background: #4a90d9;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  font-size: 15px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+button:hover { background: #3a7bc8; }
+button:disabled {
+  background: #a0c4e8;
+  cursor: not-allowed;
+}
+.progress-section {
+  margin-top: 20px;
+  display: none;
+}
+.progress-section.active { display: block; }
+.progress-bar-bg {
+  width: 100%;
+  height: 8px;
+  background: #e0e0e0;
+  border-radius: 4px;
+  overflow: hidden;
+}
+.progress-bar-fill {
+  height: 100%;
+  background: #4a90d9;
+  border-radius: 4px;
+  width: 0%;
+  transition: width 0.3s;
+}
+.status-text {
+  font-size: 13px;
+  color: #666;
+  margin-top: 8px;
+}
+.result-box {
+  margin-top: 20px;
+  padding: 16px;
+  background: #fff;
+  border: 1px solid #e0e0e0;
+  border-radius: 6px;
+  display: none;
+  font-size: 14px;
+  line-height: 1.8;
+}
+.result-box.active { display: block; }
+.result-box .title {
+  font-weight: 600;
+  font-size: 15px;
+  margin-bottom: 8px;
+}
+.result-box .divider {
+  border: none;
+  border-top: 1px solid #eee;
+  margin: 8px 0;
+}
+.result-box.success .title { color: #2e7d32; }
+.result-box.error .title { color: #c62828; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>wx2md - 微信文章转 Markdown</h1>
+
+  <label for="url">微信文章链接</label>
+  <input type="text" id="url" placeholder="https://mp.weixin.qq.com/s/...">
+
+  <button id="convertBtn" onclick="startConvert()">开始转换</button>
+
+  <div class="progress-section" id="progressSection">
+    <div class="progress-bar-bg">
+      <div class="progress-bar-fill" id="progressBar"></div>
+    </div>
+    <div class="status-text" id="statusText">就绪</div>
+  </div>
+
+  <div class="result-box" id="resultBox">
+    <div class="title" id="resultTitle"></div>
+    <hr class="divider">
+    <div id="resultContent"></div>
+  </div>
+</div>
+
+<script>
+async function startConvert() {
+  const url = document.getElementById('url').value.trim();
+  if (!url.includes('mp.weixin.qq.com')) {
+    showResult('error', '错误', '不是有效的微信公众号文章链接');
+    return;
+  }
+
+  const btn = document.getElementById('convertBtn');
+  const progressSection = document.getElementById('progressSection');
+  const progressBar = document.getElementById('progressBar');
+  const statusText = document.getElementById('statusText');
+  const resultBox = document.getElementById('resultBox');
+
+  btn.disabled = true;
+  btn.textContent = '转换中...';
+  progressSection.classList.add('active');
+  resultBox.classList.remove('active', 'success', 'error');
+  progressBar.style.width = '5%';
+  statusText.textContent = '正在连接...';
+
+  try {
+    const response = await fetch('/api/convert', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url })
+    });
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop();
+
+      let eventType = '';
+      for (const line of lines) {
+        if (line.startsWith('event: ')) {
+          eventType = line.slice(7);
+        } else if (line.startsWith('data: ')) {
+          const data = JSON.parse(line.slice(6));
+          handleEvent(eventType, data, progressBar, statusText);
+        }
+      }
+    }
+  } catch (e) {
+    showResult('error', '转换失败', e.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '开始转换';
+  }
+}
+
+function handleEvent(type, data, progressBar, statusText) {
+  if (type === 'progress') {
+    statusText.textContent = data.msg;
+    // 根据消息关键字估算进度
+    const p = estimateProgress(data.msg);
+    progressBar.style.width = (p * 100) + '%';
+  } else if (type === 'done') {
+    progressBar.style.width = '100%';
+    statusText.textContent = '完成!';
+    const content =
+      '标题: ' + data.title + '\n' +
+      '作者: ' + data.author + '\n' +
+      '日期: ' + data.date + '\n' +
+      '图片: ' + data.img_count + ' 张\n' +
+      '输出: ' + data.output_path;
+    showResult('success', '转换成功', content);
+  } else if (type === 'error') {
+    progressBar.style.width = '0%';
+    statusText.textContent = '出错了';
+    showResult('error', '转换失败', data.msg);
+  }
+}
+
+function estimateProgress(msg) {
+  if (msg.includes('正在启动浏览器')) return 0.05;
+  if (msg.includes('正在加载页面')) return 0.10;
+  if (msg.includes('正在滚动加载图片')) return 0.20;
+  if (msg.includes('正在抓取文章')) return 0.25;
+  if (msg.includes('正在处理内容')) return 0.35;
+  if (msg.includes('正在下载图片')) {
+    // 尝试提取 x/y 进度
+    const m = msg.match(/(\d+)\/(\d+)/);
+    if (m) return 0.4 + 0.45 * (parseInt(m[1]) / parseInt(m[2]));
+    return 0.5;
+  }
+  if (msg.includes('正在转换为 Markdown')) return 0.90;
+  if (msg.includes('完成')) return 1.0;
+  return 0.5;
+}
+
+function showResult(type, title, content) {
+  const box = document.getElementById('resultBox');
+  box.classList.remove('success', 'error');
+  box.classList.add('active', type);
+  document.getElementById('resultTitle').textContent = title;
+  document.getElementById('resultContent').textContent = content;
+}
+</script>
+</body>
+</html>
