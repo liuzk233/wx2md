@@ -5,3 +5,4 @@ __pycache__/
 openspec/config.yaml
 venv/
 .env
+.playwright-cli/

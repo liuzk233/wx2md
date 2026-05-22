@@ -109,6 +109,100 @@ button:disabled {
 }
 .result-box.success .title { color: #2e7d32; }
 .result-box.error .title { color: #c62828; }
+.dir-input-row {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}
+.dir-input-row input[type="text"] { flex: 1; }
+.browse-btn {
+  width: auto;
+  padding: 0 16px;
+  margin-top: 0;
+  font-size: 14px;
+  border-radius: 6px;
+  flex-shrink: 0;
+}
+.modal-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.4);
+  z-index: 100;
+  justify-content: center;
+  align-items: center;
+}
+.modal-overlay.active { display: flex; }
+.modal {
+  background: #fff;
+  border-radius: 8px;
+  width: 90%;
+  max-width: 480px;
+  max-height: 70vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+}
+.modal-header {
+  padding: 16px;
+  border-bottom: 1px solid #eee;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.modal-header h3 { font-size: 16px; font-weight: 600; }
+.modal-close {
+  background: none;
+  border: none;
+  font-size: 20px;
+  color: #999;
+  cursor: pointer;
+  padding: 0;
+  margin: 0;
+  width: auto;
+  line-height: 1;
+}
+.modal-close:hover { color: #333; background: none; }
+.breadcrumb {
+  padding: 10px 16px;
+  font-size: 13px;
+  color: #888;
+  border-bottom: 1px solid #f0f0f0;
+  word-break: break-all;
+}
+.breadcrumb span { cursor: pointer; color: #4a90d9; }
+.breadcrumb span:hover { text-decoration: underline; }
+.dir-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 0;
+}
+.dir-item {
+  padding: 10px 16px;
+  font-size: 14px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.dir-item:hover { background: #f5f8fc; }
+.dir-item .icon { color: #4a90d9; font-size: 16px; }
+.modal-footer {
+  padding: 12px 16px;
+  border-top: 1px solid #eee;
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.modal-footer button {
+  width: auto;
+  padding: 8px 20px;
+  margin-top: 0;
+  font-size: 14px;
+}
+.btn-cancel { background: #eee; color: #333; }
+.btn-cancel:hover { background: #ddd; }
+.btn-confirm { background: #4a90d9; }
 </style>
 </head>
 <body>
@@ -117,6 +211,27 @@ button:disabled {
 
   <label for="url">微信文章链接</label>
   <input type="text" id="url" placeholder="https://mp.weixin.qq.com/s/...">
+
+  <label for="outputDir" style="margin-top: 12px;">输出目录</label>
+  <div class="dir-input-row">
+    <input type="text" id="outputDir" placeholder="output" value="output">
+    <button class="browse-btn" onclick="openBrowser()">浏览...</button>
+  </div>
+
+  <div class="modal-overlay" id="modalOverlay">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>选择输出目录</h3>
+        <button class="modal-close" onclick="closeBrowser()">&times;</button>
+      </div>
+      <div class="breadcrumb" id="breadcrumb"></div>
+      <div class="dir-list" id="dirList"></div>
+      <div class="modal-footer">
+        <button class="btn-cancel" onclick="closeBrowser()">取消</button>
+        <button class="btn-confirm" onclick="confirmSelection()">选择此目录</button>
+      </div>
+    </div>
+  </div>
 
   <button id="convertBtn" onclick="startConvert()">开始转换</button>
 
@@ -156,10 +271,11 @@ async function startConvert() {
   statusText.textContent = '正在连接...';
 
   try {
+    const outputDir = document.getElementById('outputDir').value.trim() || 'output';
     const response = await fetch('/api/convert', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ url })
+      body: JSON.stringify({ url, output_dir: outputDir })
     });
 
     const reader = response.body.getReader();
@@ -238,6 +354,83 @@ function showResult(type, title, content) {
   box.classList.add('active', type);
   document.getElementById('resultTitle').textContent = title;
   document.getElementById('resultContent').textContent = content;
+}
+
+// 目录浏览器
+let browserPath = '';
+
+async function openBrowser() {
+  const currentVal = document.getElementById('outputDir').value.trim();
+  browserPath = currentVal || '';
+  document.getElementById('modalOverlay').classList.add('active');
+  await loadDir(browserPath);
+}
+
+function closeBrowser() {
+  document.getElementById('modalOverlay').classList.remove('active');
+}
+
+async function loadDir(path) {
+  const list = document.getElementById('dirList');
+  list.innerHTML = '<div style="padding:16px;color:#999;">加载中...</div>';
+  try {
+    const resp = await fetch('/api/browse?path=' + encodeURIComponent(path));
+    const data = await resp.json();
+    if (data.error) {
+      list.innerHTML = '<div style="padding:16px;color:#c62828;">' + data.error + '</div>';
+      return;
+    }
+    browserPath = data.current;
+    renderBreadcrumb(data.current);
+    let html = '';
+    // 盘符选择
+    if (data.drives) {
+      for (const d of data.drives) {
+        html += '<div class="dir-item" onclick="loadDir(\'' + d + '\\\')"><span class="icon">💾</span> ' + d + '</div>';
+      }
+    }
+    if (data.parent !== null) {
+      html += '<div class="dir-item" onclick="loadDir(\'' + escapePath(data.parent) + '\')"><span class="icon">↑</span> ..</div>';
+    }
+    for (const d of data.dirs) {
+      const child = data.current ? data.current + '/' + d : d;
+      html += '<div class="dir-item" onclick="loadDir(\'' + escapePath(child) + '\')"><span class="icon">📁</span> ' + d + '</div>';
+    }
+    if (!data.dirs.length && data.parent === null && !data.drives) {
+      html += '<div style="padding:16px;color:#999;">无子目录</div>';
+    }
+    list.innerHTML = html;
+  } catch (e) {
+    list.innerHTML = '<div style="padding:16px;color:#c62828;">请求失败</div>';
+  }
+}
+
+function escapePath(p) {
+  return p.replace(/\\/g, '/').replace(/'/g, "\\'");
+}
+
+function renderBreadcrumb(path) {
+  const bc = document.getElementById('breadcrumb');
+  if (!path) {
+    bc.innerHTML = '<span onclick="loadDir(\'\')">项目根目录</span>';
+    return;
+  }
+  const parts = path.split('/');
+  const isAbsolute = /^[A-Z]:$/i.test(parts[0]);
+  let html = isAbsolute
+    ? '<span onclick="loadDir(\'' + parts[0] + '\\\')">' + parts[0] + '</span>'
+    : '<span onclick="loadDir(\'\')">根目录</span>';
+  let accumulated = parts[0];
+  for (let i = 1; i < parts.length; i++) {
+    accumulated += '/' + parts[i];
+    html += ' / <span onclick="loadDir(\'' + escapePath(accumulated) + '\')">' + parts[i] + '</span>';
+  }
+  bc.innerHTML = html;
+}
+
+function confirmSelection() {
+  document.getElementById('outputDir').value = browserPath || 'output';
+  closeBrowser();
 }
 </script>
 </body>

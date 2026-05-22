@@ -5,13 +5,59 @@ import json
 from pathlib import Path
 
 import anyio.to_thread
-from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse, StreamingResponse
+from fastapi import FastAPI, Query, Request
+from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from wx2md import convert
 
 app = FastAPI(title="wx2md")
+
+BASE_DIR = Path(__file__).resolve().parent
+
+
+def _list_drives():
+    """列出 Windows 可用盘符"""
+    import string
+    drives = []
+    for letter in string.ascii_uppercase:
+        if Path(f"{letter}:\\").exists():
+            drives.append(f"{letter}:")
+    return drives
+
+
+@app.get("/api/browse")
+async def api_browse(path: str = Query(default="")):
+    if not path:
+        target = BASE_DIR
+    else:
+        target = Path(path).resolve()
+    if not target.is_dir():
+        return JSONResponse({"error": "目录不存在"}, status_code=400)
+    # 在盘符根目录（如 D:\）时列出盘符供选择
+    if path and len(path) <= 2 and Path(target.anchor).resolve() == target:
+        return {
+            "current": str(target).replace("\\", "/"),
+            "parent": None,
+            "dirs": [],
+            "drives": _list_drives(),
+        }
+    dirs = []
+    try:
+        for item in sorted(target.iterdir()):
+            if item.is_dir() and not item.name.startswith("."):
+                dirs.append(item.name)
+    except PermissionError:
+        pass
+    parent = target.parent
+    if parent == target:
+        parent = None
+    return {
+        "current": str(target).replace("\\", "/"),
+        "parent": str(parent).replace("\\", "/") if parent else None,
+        "dirs": dirs,
+        "drives": _list_drives() if parent is None else None,
+    }
 
 # 确保 output 目录存在
 Path("output").mkdir(exist_ok=True)
@@ -27,6 +73,7 @@ async def index():
 async def api_convert(request: Request):
     body = await request.json()
     url = body.get("url", "")
+    output_dir = body.get("output_dir", "output")
 
     if "mp.weixin.qq.com" not in url:
         async def error_stream():
@@ -41,7 +88,7 @@ async def api_convert(request: Request):
     async def event_stream():
         task = asyncio.create_task(
             anyio.to_thread.run_sync(
-                lambda: convert(url, on_progress=on_progress),
+                lambda: convert(url, output_dir=output_dir, on_progress=on_progress),
                 cancellable=True,
             )
         )
