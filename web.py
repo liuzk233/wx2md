@@ -18,7 +18,8 @@ app = FastAPI(title="wx2md")
 # PyInstaller frozen 模式检测
 IS_FROZEN = getattr(sys, "frozen", False)
 BASE_DIR = Path(sys._MEIPASS) if IS_FROZEN else Path(__file__).resolve().parent
-BROWSE_ROOT = BASE_DIR.resolve()
+DATA_ROOT = Path(sys.executable).resolve().parent if IS_FROZEN else BASE_DIR
+BROWSE_ROOT = DATA_ROOT.resolve()
 
 
 def _list_drives():
@@ -47,6 +48,13 @@ def _resolve_browse_target(path: str) -> Path:
     if not candidate.is_absolute():
         candidate = BROWSE_ROOT / candidate
     return candidate.resolve()
+
+
+def _resolve_output_dir(path: str) -> str:
+    candidate = Path(path or "output")
+    if not candidate.is_absolute():
+        candidate = DATA_ROOT / candidate
+    return str(candidate.resolve())
 
 
 @app.get("/api/browse")
@@ -85,8 +93,9 @@ async def api_browse(path: str = Query(default="")):
     }
 
 # 确保 output 目录存在
-Path("output").mkdir(exist_ok=True)
-app.mount("/output", StaticFiles(directory="output"), name="output")
+DEFAULT_OUTPUT_DIR = DATA_ROOT / "output"
+DEFAULT_OUTPUT_DIR.mkdir(exist_ok=True)
+app.mount("/output", StaticFiles(directory=str(DEFAULT_OUTPUT_DIR)), name="output")
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -98,7 +107,7 @@ async def index():
 async def api_convert(request: Request):
     body = await request.json()
     url = body.get("url", "")
-    output_dir = body.get("output_dir", "output")
+    output_dir = _resolve_output_dir(body.get("output_dir", "output"))
 
     if "mp.weixin.qq.com" not in url:
         async def error_stream():
