@@ -4,30 +4,46 @@
 
 ## 安装方式
 
-### 方式一：下载 exe（推荐新手）
+### 方式一：下载 exe（纯使用）
 
-从 [GitHub Releases](https://github.com/your-username/wx2md/releases) 下载 `wx2md.exe`，双击运行后浏览器会自动打开转换界面。
+从 [GitHub Releases](https://github.com/liuzk233/wx2md/releases) 下载 `wx2md.exe`，双击运行后浏览器会自动打开转换界面。
 
-### 方式二：Docker（推荐开发者）
+### 方式二：Docker
+
+已发布的 Docker 镜像在 Docker Hub：
 
 ```bash
-git clone https://github.com/your-username/wx2md.git
+docker pull liuzk233/wx2md
+docker run --rm -p 8000:8000 liuzk233/wx2md
+```
+
+如果当前网络无法访问 Docker Hub，可以从 [GitHub Releases](https://github.com/liuzk233/wx2md/releases) 下载离线镜像压缩包 `wx2md.tar`，导入后再运行：
+
+```bash
+docker load -i wx2md.tar
+docker run --rm -p 8000:8000 liuzk233/wx2md
+```
+
+也可以从源码构建并启动：
+
+```bash
+git clone https://github.com/liuzk233/wx2md.git
 cd wx2md
 docker compose up
 ```
 
 访问 http://localhost:8000 使用 Web 界面。
 
-### 方式三：Claude Code Skill（推荐 AI 用户）
+### 方式三：Claude Code Skill（AI 工作流）
 
 1. Clone 仓库到本地
 2. 在 Claude Code 中打开项目目录
 3. 直接粘贴微信文章链接，Claude 会自动执行转换
 
-### 方式四：原生安装（推荐 Python 开发者）
+### 方式四：原生安装
 
 ```bash
-git clone https://github.com/your-username/wx2md.git
+git clone https://github.com/liuzk233/wx2md.git
 cd wx2md
 pip install -r requirements.txt
 ```

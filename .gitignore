@@ -1,6 +1,7 @@
 output/
 __pycache__/
 *.pyc
+artifacts/
 openspec/
 venv/
 .env
