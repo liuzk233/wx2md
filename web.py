@@ -2,6 +2,8 @@
 
 import asyncio
 import json
+import sys
+import webbrowser
 from pathlib import Path
 
 import anyio.to_thread
@@ -13,7 +15,10 @@ from wx2md import convert
 
 app = FastAPI(title="wx2md")
 
-BASE_DIR = Path(__file__).resolve().parent
+# PyInstaller frozen 模式检测
+IS_FROZEN = getattr(sys, "frozen", False)
+BASE_DIR = Path(sys._MEIPASS) if IS_FROZEN else Path(__file__).resolve().parent
+BROWSE_ROOT = BASE_DIR.resolve()
 
 
 def _list_drives():
@@ -26,16 +31,33 @@ def _list_drives():
     return drives
 
 
+def _is_within_directory(path: Path, root: Path) -> bool:
+    try:
+        path.relative_to(root)
+        return True
+    except ValueError:
+        return False
+
+
+def _resolve_browse_target(path: str) -> Path:
+    if not path:
+        return BROWSE_ROOT
+
+    candidate = Path(path)
+    if not candidate.is_absolute():
+        candidate = BROWSE_ROOT / candidate
+    return candidate.resolve()
+
+
 @app.get("/api/browse")
 async def api_browse(path: str = Query(default="")):
-    if not path:
-        target = BASE_DIR
-    else:
-        target = Path(path).resolve()
+    target = _resolve_browse_target(path)
+    if not IS_FROZEN and not _is_within_directory(target, BROWSE_ROOT):
+        return JSONResponse({"error": "目录访问被拒绝"}, status_code=403)
     if not target.is_dir():
         return JSONResponse({"error": "目录不存在"}, status_code=400)
     # 在盘符根目录（如 D:\）时列出盘符供选择
-    if path and len(path) <= 2 and Path(target.anchor).resolve() == target:
+    if IS_FROZEN and path and len(path) <= 2 and Path(target.anchor).resolve() == target:
         return {
             "current": str(target).replace("\\", "/"),
             "parent": None,
@@ -49,14 +71,17 @@ async def api_browse(path: str = Query(default="")):
                 dirs.append(item.name)
     except PermissionError:
         pass
-    parent = target.parent
+    if not IS_FROZEN and target == BROWSE_ROOT:
+        parent = None
+    else:
+        parent = target.parent
     if parent == target:
         parent = None
     return {
         "current": str(target).replace("\\", "/"),
         "parent": str(parent).replace("\\", "/") if parent else None,
         "dirs": dirs,
-        "drives": _list_drives() if parent is None else None,
+        "drives": _list_drives() if IS_FROZEN and parent is None else None,
     }
 
 # 确保 output 目录存在
@@ -66,7 +91,7 @@ app.mount("/output", StaticFiles(directory="output"), name="output")
 
 @app.get("/", response_class=HTMLResponse)
 async def index():
-    return Path("static/index.html").read_text(encoding="utf-8")
+    return (BASE_DIR / "static" / "index.html").read_text(encoding="utf-8")
 
 
 @app.post("/api/convert")
@@ -117,4 +142,9 @@ async def api_convert(request: Request):
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    host = "127.0.0.1" if IS_FROZEN else "0.0.0.0"
+
+    if IS_FROZEN:
+        webbrowser.open(f"http://{host}:8000")
+
+    uvicorn.run(app, host=host, port=8000)

@@ -1,0 +1,12 @@
+services:
+  wx2md:
+    image: liuzk233/wx2md
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - output:/app/output
+    restart: unless-stopped
+
+volumes:
+  output:
