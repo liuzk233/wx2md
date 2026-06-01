@@ -26,3 +26,4 @@ CLAUDE.md
 !.claude/skills/wx2md/
 !.claude/skills/wx2md/SKILL.md
 .codex/
+skills/wx2md/bin/wx2md-cli.exe
