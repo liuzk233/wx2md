@@ -149,11 +149,27 @@ async def api_convert(request: Request):
 
 
 if __name__ == "__main__":
+    import socket
     import uvicorn
+
+    def _find_available_port(start=8000, end=8009):
+        for port in range(start, end + 1):
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                try:
+                    s.bind(("127.0.0.1", port))
+                    return port
+                except OSError:
+                    continue
+        return None
+
+    port = _find_available_port()
+    if port is None:
+        print("错误: 无法找到可用端口 (8000-8009)，请关闭占用端口的程序后重试。")
+        sys.exit(1)
 
     host = "127.0.0.1" if IS_FROZEN else "0.0.0.0"
 
     if IS_FROZEN:
-        webbrowser.open(f"http://{host}:8000")
+        webbrowser.open(f"http://{host}:{port}")
 
-    uvicorn.run(app, host=host, port=8000)
+    uvicorn.run(app, host=host, port=port)
